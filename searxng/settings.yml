@@ -1,0 +1,14 @@
+# SearXNG 設定（Hermes Agent 需 JSON API）
+# 文件：https://docs.searxng.org/admin/settings/settings/
+
+use_default_settings: true
+
+server:
+  secret_key: "hermes-searxng-change-me-in-production"
+  limiter: false
+  image_proxy: false
+
+search:
+  formats:
+    - html
+    - json

@@ -1,0 +1,163 @@
+# Hermes Agent — Ubuntu + GUI 自訂映像部署
+# 文件：https://hermes-agent.nousresearch.com/docs/user-guide/docker
+#
+# 建置映像：
+#   docker compose build
+#
+# 首次設定：
+#   export HERMES_UID=$(id -u) HERMES_GID=$(id -g)
+#   docker compose --profile setup run --rm setup
+#
+# 啟動：
+#   docker compose up -d
+#   瀏覽器開啟 noVNC：http://127.0.0.1:6080/vnc.html
+
+name: hermes
+
+networks:
+  hermes-net:
+    driver: bridge
+
+x-hermes-build: &hermes-build
+  context: .
+  dockerfile: Dockerfile
+  args:
+    UBUNTU_VERSION: ${UBUNTU_VERSION:-24.04}
+    HERMES_UID: ${HERMES_UID:-1000}
+    HERMES_GID: ${HERMES_GID:-1000}
+    HERMES_BRANCH: ${HERMES_BRANCH:-main}
+    HERMES_COMMIT: ${HERMES_COMMIT:-}
+    VNC_PASSWORD: ${VNC_PASSWORD:-hermes}
+    SKIP_BROWSER: ${HERMES_SKIP_BROWSER:-0}
+
+x-hermes-image: &hermes-image
+  image: ${HERMES_IMAGE_NAME:-hermes-agent-ubuntu-gui}:${HERMES_IMAGE_TAG:-local}
+  build: *hermes-build
+
+x-hermes-common: &hermes-common
+  <<: *hermes-image
+  env_file:
+    - .env
+  environment:
+    HERMES_UID: ${HERMES_UID:-1000}
+    HERMES_GID: ${HERMES_GID:-1000}
+  volumes:
+    - ${HERMES_DATA_DIR:-./data}:/opt/data
+    # 高風險：讓 Hermes 以 root 操作宿主機 Docker（需 HERMES_RUN_AS_ROOT=1）
+    # - /var/run/docker.sock:/var/run/docker.sock
+  networks:
+    - hermes-net
+  extra_hosts:
+    # Linux：讓容器連到宿主機上的 Ollama（預設 11434）
+    - "host.docker.internal:host-gateway"
+
+services:
+  # 選用：在 Compose 內跑 Ollama（需 GPU 時取消 deploy 註解）
+  # 啟動：docker compose --profile ollama up -d
+  # .env 設：OLLAMA_BASE_URL=http://ollama:11434/v1
+  ollama:
+    image: ollama/ollama:${OLLAMA_IMAGE_TAG:-latest}
+    container_name: ${OLLAMA_CONTAINER_NAME:-ollama}
+    profiles: ["ollama"]
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_HOST_BIND:-127.0.0.1}:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-65536}
+    networks:
+      - hermes-net
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # 選用：自架 SearXNG 搜尋（Hermes web.search_backend=searxng）
+  # 啟動：docker compose --profile searxng up -d
+  # .env 設：SEARXNG_URL=http://searxng:8080
+  searxng:
+    image: searxng/searxng:${SEARXNG_IMAGE_TAG:-latest}
+    container_name: ${SEARXNG_CONTAINER_NAME:-searxng}
+    profiles: ["searxng"]
+    restart: unless-stopped
+    ports:
+      - "${SEARXNG_HOST_BIND:-127.0.0.1}:${SEARXNG_PORT:-8080}:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: http://${SEARXNG_CONTAINER_NAME:-searxng}:8080/
+    networks:
+      - hermes-net
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+
+  setup:
+    <<: *hermes-common
+    profiles: ["setup"]
+    stdin_open: true
+    tty: true
+    # root 模式時由 entrypoint 以 root 執行；一般模式會降權為 hermes
+    command: ["setup"]
+
+  gateway:
+    <<: *hermes-common
+    container_name: ${HERMES_CONTAINER_NAME:-hermes}
+    restart: unless-stopped
+    command: ["gateway"]
+    ports:
+      # VNC 原生客戶端
+      - "${HERMES_VNC_BIND:-127.0.0.1}:${HERMES_VNC_PORT:-5901}:5901"
+      # noVNC 網頁桌面（XFCE GUI）
+      - "${HERMES_NOVNC_BIND:-127.0.0.1}:${HERMES_NOVNC_PORT:-6080}:6080"
+      # Hermes Gateway API
+      - "${HERMES_GATEWAY_BIND:-127.0.0.1}:${HERMES_GATEWAY_PORT:-8642}:8642"
+      # Hermes Dashboard
+      - "${HERMES_DASHBOARD_BIND:-127.0.0.1}:${HERMES_DASHBOARD_PORT:-9119}:9119"
+    environment:
+      HERMES_RUN_AS_ROOT: ${HERMES_RUN_AS_ROOT:-0}
+      HERMES_ALLOW_ROOT_GATEWAY: ${HERMES_ALLOW_ROOT_GATEWAY:-1}
+      HERMES_GUI_ENABLED: ${HERMES_GUI_ENABLED:-1}
+      HERMES_GATEWAY_ENABLED: ${HERMES_GATEWAY_ENABLED:-1}
+      VNC_RESOLUTION: ${VNC_RESOLUTION:-1920x1080}
+      NOVNC_PORT: ${HERMES_NOVNC_PORT:-6080}
+      HERMES_DASHBOARD: ${HERMES_DASHBOARD:-1}
+      HERMES_DASHBOARD_HOST: ${HERMES_DASHBOARD_HOST:-0.0.0.0}
+      HERMES_DASHBOARD_PORT: ${HERMES_DASHBOARD_PORT:-9119}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      NOUS_API_KEY: ${NOUS_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
+      API_SERVER_ENABLED: ${API_SERVER_ENABLED:-false}
+      API_SERVER_HOST: ${API_SERVER_HOST:-127.0.0.1}
+      API_SERVER_KEY: ${API_SERVER_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-65536}
+      OLLAMA_AUTO_CONFIG: ${OLLAMA_AUTO_CONFIG:-1}
+      SEARXNG_URL: ${SEARXNG_URL:-}
+      SEARXNG_AUTO_CONFIG: ${SEARXNG_AUTO_CONFIG:-1}
+    deploy:
+      resources:
+        limits:
+          memory: ${HERMES_MEMORY_LIMIT:-4G}
+          cpus: "${HERMES_CPU_LIMIT:-2.0}"
+    # Playwright / 瀏覽器工具使用容器內 XFCE 顯示
+    shm_size: "1gb"
+
+volumes:
+  ollama_data:
