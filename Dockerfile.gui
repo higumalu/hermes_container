@@ -1,0 +1,74 @@
+# Derived image: official Hermes Agent + Linux desktop (XFCE/VNC/noVNC)
+#
+# Build:
+#   docker compose build gateway
+#
+# Rebuild after upstream image updates:
+#   docker compose build --pull gateway
+
+FROM nousresearch/hermes-agent:latest
+
+USER root
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        xfce4 \
+        xfce4-terminal \
+        dbus-x11 \
+        tigervnc-standalone-server \
+        tigervnc-tools \
+        websockify \
+        novnc \
+        xdotool \
+        xclip \
+        gnome-screenshot \
+        maim \
+        imagemagick \
+        netcat-openbsd \
+        wget \
+        curl \
+        jq \
+        unzip \
+        tmux \
+        scrot \
+        xvfb \
+        ibus \
+        ibus-chewing \
+        ibus-gtk3 \
+        gnupg \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Chrome on amd64; Chromium fallback on other architectures.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    if [ "${arch}" = "amd64" ]; then \
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub \
+            | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg; \
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
+            > /etc/apt/sources.list.d/google-chrome.list; \
+        apt-get update; \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends google-chrome-stable; \
+        ln -sf /usr/bin/google-chrome-stable /usr/local/bin/google-chrome; \
+    else \
+        apt-get update; \
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium; \
+        ln -sf /usr/bin/chromium /usr/local/bin/google-chrome; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir \
+    pyautogui pynput Pillow crawl4ai
+
+COPY docker/gui/ /docker/gui/
+
+RUN chmod +x /docker/gui/cont-init-vnc.sh \
+             /docker/gui/hermes-vnc-restart.sh \
+             /docker/gui/s6-gui-stack/run \
+    && cp /docker/gui/cont-init-vnc.sh /etc/cont-init.d/99-prepare-vnc \
+    && mkdir -p /etc/s6-overlay/s6-rc.d/gui-stack \
+    && cp /docker/gui/s6-gui-stack/type /etc/s6-overlay/s6-rc.d/gui-stack/type \
+    && cp /docker/gui/s6-gui-stack/run /etc/s6-overlay/s6-rc.d/gui-stack/run \
+    && touch /etc/s6-overlay/s6-rc.d/user/contents.d/gui-stack
+
+USER hermes

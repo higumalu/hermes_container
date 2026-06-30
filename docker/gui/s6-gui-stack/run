@@ -1,0 +1,45 @@
+#!/command/with-contenv bash
+set -euo pipefail
+
+HERMES_HOME="${HERMES_HOME:-/opt/data}"
+VNC_DISPLAY="${VNC_DISPLAY:-:1}"
+VNC_PORT="${VNC_PORT:-5901}"
+VNC_GEOMETRY="${VNC_GEOMETRY:-1920x1080}"
+NOVNC_WS_PORT="${NOVNC_WS_PORT:-6080}"
+NOVNC_HTTP_PORT="${NOVNC_HTTP_PORT:-6081}"
+XSTARTUP="${HERMES_HOME}/.vnc/xstartup"
+
+WS_PID=""
+HTTP_PID=""
+
+cleanup() {
+  [ -n "${HTTP_PID}" ] && kill "${HTTP_PID}" 2>/dev/null || true
+  [ -n "${WS_PID}" ] && kill "${WS_PID}" 2>/dev/null || true
+  s6-setuidgid hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+s6-setuidgid hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
+
+s6-setuidgid hermes vncserver "${VNC_DISPLAY}" \
+  -geometry "${VNC_GEOMETRY}" -depth 24 \
+  -rfbport "${VNC_PORT}" -localhost no \
+  -xstartup "${XSTARTUP}" &
+
+VNC_PID=$!
+
+for _ in $(seq 1 60); do
+  if nc -z 127.0.0.1 "${VNC_PORT}" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+websockify "0.0.0.0:${NOVNC_WS_PORT}" "127.0.0.1:${VNC_PORT}" &
+WS_PID=$!
+
+cd /usr/share/novnc
+python3 -m http.server "${NOVNC_HTTP_PORT}" --bind 0.0.0.0 &
+HTTP_PID=$!
+
+wait "${VNC_PID}"

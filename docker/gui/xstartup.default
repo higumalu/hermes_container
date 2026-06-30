@@ -1,0 +1,19 @@
+#!/bin/sh
+# TigerVNC session — XFCE + IBus Chewing (注音) + session D-Bus
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+
+if command -v dbus-launch >/dev/null 2>&1; then
+  eval "$(dbus-launch --sh-syntax)"
+fi
+
+export XDG_SESSION_TYPE=x11
+export XDG_CURRENT_DESKTOP=XFCE
+
+# IBus Chewing (注音輸入法)
+export GTK_IM_MODULE=ibus
+export QT_IM_MODULE=ibus
+export XMODIFIERS=@im=ibus
+ibus-daemon -drx &
+
+exec startxfce4

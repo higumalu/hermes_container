@@ -1,0 +1,72 @@
+# Hermes Agent — derived GUI image (FROM nousresearch/hermes-agent) + ./data persistence
+#
+# Build:
+#   docker compose build gateway
+#
+# First-time setup (interactive wizard):
+#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose --profile setup run --rm setup
+#
+# Start gateway + desktop GUI:
+#   HERMES_UID=$(id -u) HERMES_GID=$(id -g) docker compose up -d --build
+#
+# Logs:
+#   docker compose logs -f gateway
+#
+# noVNC (after container is up):
+#   http://localhost:6081/vnc_lite.html?host=localhost&port=6080
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gui
+    image: hermes-agent-gui:local
+    container_name: hermes
+    restart: unless-stopped
+    command: ["gateway", "run"]
+    ports:
+      - "${HERMES_GATEWAY_PORT:-8642}:8642"
+      - "${HERMES_DASHBOARD_PORT:-9119}:9119"
+      - "${HERMES_VNC_PORT:-5901}:5901"
+      - "${HERMES_NOVNC_WS_PORT:-6080}:6080"
+      - "${HERMES_NOVNC_HTTP_PORT:-6081}:6081"
+    volumes:
+      - ./data:/opt/data
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+      - HERMES_DASHBOARD=${HERMES_DASHBOARD:-1}
+      - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}
+      - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
+      - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
+      - DISPLAY=${VNC_DISPLAY:-:1}
+      - AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/google-chrome
+      - VNC_PASSWORD=${VNC_PASSWORD:-}
+      - VNC_DISPLAY=${VNC_DISPLAY:-:1}
+      - VNC_PORT=${VNC_PORT:-5901}
+      - VNC_GEOMETRY=${VNC_GEOMETRY:-1920x1080}
+      - NOVNC_WS_PORT=${NOVNC_WS_PORT:-6080}
+      - NOVNC_HTTP_PORT=${NOVNC_HTTP_PORT:-6081}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    shm_size: "2g"
+    deploy:
+      resources:
+        limits:
+          memory: ${HERMES_MEMORY_LIMIT:-8G}
+          cpus: "${HERMES_CPU_LIMIT:-4.0}"
+
+  setup:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes-setup
+    profiles: [setup]
+    stdin_open: true
+    tty: true
+    command: ["setup"]
+    volumes:
+      - ./data:/opt/data
+    environment:
+      - HERMES_UID=${HERMES_UID:-10000}
+      - HERMES_GID=${HERMES_GID:-10000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
