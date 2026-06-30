@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Hermes Setup
-Comment=Hermes Agent 首次設定（API Key、模型）
-Exec=xfce4-terminal --title="Hermes Setup" --command="env HOME=/opt/data HERMES_HOME=/opt/data /opt/hermes/venv/bin/hermes setup"
-Icon=preferences-system
-Terminal=false
-Categories=Settings;Development;

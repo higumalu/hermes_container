@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Hermes Chat
-Comment=Hermes Agent 互動終端
-Exec=xfce4-terminal --title=Hermes --command="env HOME=/opt/data HERMES_HOME=/opt/data /opt/hermes/venv/bin/hermes"
-Icon=utilities-terminal
-Terminal=false
-Categories=Development;Utility;
