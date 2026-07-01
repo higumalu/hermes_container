@@ -3,9 +3,10 @@ set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-/opt/data}"
 VNC_DIR="${HERMES_HOME}/.vnc"
+TIGERVNC_DIR="${HERMES_HOME}/.config/tigervnc"
 
-mkdir -p "${VNC_DIR}"
-chmod 700 "${VNC_DIR}"
+mkdir -p "${VNC_DIR}" "${TIGERVNC_DIR}"
+chmod 700 "${VNC_DIR}" "${HERMES_HOME}/.config" "${TIGERVNC_DIR}"
 
 if [ ! -f "${VNC_DIR}/xstartup" ]; then
   cp /docker/gui/xstartup.default "${VNC_DIR}/xstartup"
@@ -20,11 +21,17 @@ ibus-daemon -drx &\
 ' "${VNC_DIR}/xstartup"
 fi
 
-if [ -n "${VNC_PASSWORD:-}" ] && [ ! -f "${VNC_DIR}/passwd" ]; then
-  echo "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_DIR}/passwd"
-  chmod 600 "${VNC_DIR}/passwd"
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  if [ ! -f "${TIGERVNC_DIR}/passwd" ]; then
+    echo "${VNC_PASSWORD}" | vncpasswd -f > "${TIGERVNC_DIR}/passwd"
+    chmod 600 "${TIGERVNC_DIR}/passwd"
+  fi
+  if [ ! -f "${VNC_DIR}/passwd" ]; then
+    echo "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_DIR}/passwd"
+    chmod 600 "${VNC_DIR}/passwd"
+  fi
 fi
 
 if id hermes >/dev/null 2>&1; then
-  chown -R hermes:hermes "${VNC_DIR}" || true
+  chown -R hermes:hermes "${VNC_DIR}" "${HERMES_HOME}/.config" || true
 fi

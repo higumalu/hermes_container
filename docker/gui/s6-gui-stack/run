@@ -2,6 +2,7 @@
 set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-/opt/data}"
+export HOME="${HERMES_HOME}"
 VNC_DISPLAY="${VNC_DISPLAY:-:1}"
 VNC_PORT="${VNC_PORT:-5901}"
 VNC_GEOMETRY="${VNC_GEOMETRY:-1920x1080}"
@@ -12,19 +13,27 @@ XSTARTUP="${HERMES_HOME}/.vnc/xstartup"
 WS_PID=""
 HTTP_PID=""
 
+as_hermes() {
+  if [ "$(id -un)" = "hermes" ]; then
+    "$@"
+  else
+    s6-setuidgid hermes "$@"
+  fi
+}
+
 cleanup() {
   [ -n "${HTTP_PID}" ] && kill "${HTTP_PID}" 2>/dev/null || true
   [ -n "${WS_PID}" ] && kill "${WS_PID}" 2>/dev/null || true
-  s6-setuidgid hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
+  as_hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-s6-setuidgid hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
+as_hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
 
-s6-setuidgid hermes vncserver "${VNC_DISPLAY}" \
+as_hermes vncserver "${VNC_DISPLAY}" \
   -geometry "${VNC_GEOMETRY}" -depth 24 \
   -rfbport "${VNC_PORT}" -localhost no \
-  -xstartup "${XSTARTUP}" &
+  -xstartup "${XSTARTUP}" -fg &
 
 VNC_PID=$!
 

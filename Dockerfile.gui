@@ -62,7 +62,10 @@ RUN uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir \
 
 COPY docker/gui/ /docker/gui/
 
-RUN chmod +x /docker/gui/cont-init-vnc.sh \
+# Strip Windows CRLF so s6 type files and shell scripts work in Linux.
+RUN find /docker/gui -type f \( -name '*.sh' -o -name 'run' -o -name 'type' -o -name 'xstartup.default' \) \
+        -exec sed -i 's/\r$//' {} + \
+    && chmod +x /docker/gui/cont-init-vnc.sh \
              /docker/gui/hermes-vnc-restart.sh \
              /docker/gui/s6-gui-stack/run \
     && cp /docker/gui/cont-init-vnc.sh /etc/cont-init.d/99-prepare-vnc \
@@ -70,5 +73,3 @@ RUN chmod +x /docker/gui/cont-init-vnc.sh \
     && cp /docker/gui/s6-gui-stack/type /etc/s6-overlay/s6-rc.d/gui-stack/type \
     && cp /docker/gui/s6-gui-stack/run /etc/s6-overlay/s6-rc.d/gui-stack/run \
     && touch /etc/s6-overlay/s6-rc.d/user/contents.d/gui-stack
-
-USER hermes

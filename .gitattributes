@@ -1,0 +1,5 @@
+# Shell scripts and s6 service files must use LF inside Linux containers
+*.sh text eol=lf
+docker/gui/s6-gui-stack/run text eol=lf
+docker/gui/s6-gui-stack/type text eol=lf
+docker/gui/xstartup.default text eol=lf
