@@ -33,6 +33,7 @@ services:
     volumes:
       - ./data:/opt/data
     environment:
+      - TZ=${TZ:-Asia/Taipei}
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
       - HERMES_DASHBOARD=${HERMES_DASHBOARD:-1}
@@ -66,6 +67,7 @@ services:
     volumes:
       - ./data:/opt/data
     environment:
+      - TZ=${TZ:-Asia/Taipei}
       - HERMES_UID=${HERMES_UID:-10000}
       - HERMES_GID=${HERMES_GID:-10000}
     extra_hosts:
