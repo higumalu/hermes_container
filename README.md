@@ -9,6 +9,7 @@
 - **noVNC**：瀏覽器遠端桌面（預設 HTTP `6081`、WebSocket `6080`）
 - **Chrome**：Agent 瀏覽器自動化（amd64 為 Google Chrome，其他架構為 Chromium）
 - **注音輸入**：IBus Chewing，可在 XFCE 桌面使用
+- **GUI 自動化套件**：映像內預裝 `pyautogui`、`pynput`、`Pillow`、`crawl4ai`，支援螢幕操作與網頁擷取
 
 ## 需求
 
@@ -70,6 +71,20 @@ docker compose up -d --build
 | Dashboard | http://localhost:9119 |
 | Gateway | http://localhost:8642 |
 
+## 從本機 Hermes 遷移設定（選用）
+
+若先前已在 Windows 本機安裝 Hermes Agent，可使用 [`scripts/migrate-local-hermes.py`](scripts/migrate-local-hermes.py) 將模型、API 金鑰、skills 與 profiles 合併至 `./data`：
+
+1. 編輯腳本頂端的 `LOCAL_HERMES`，指向本機 Hermes 資料目錄（預設為 `%LOCALAPPDATA%\hermes`）
+2. 先完成上述 **首次設定**（`setup`），確保 `./data/config.yaml` 已存在
+3. 執行遷移（需安裝 PyYAML）：
+
+```bash
+uv run scripts/migrate-local-hermes.py
+```
+
+腳本會自動備份 `data/config.yaml`，並將 `localhost` URL 改寫為 `host.docker.internal` 以在容器內正常連線。
+
 ## 常用指令
 
 ```bash
@@ -95,13 +110,17 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 | 變數 | 說明 | 預設 |
 |------|------|------|
-| `HERMES_UID` / `HERMES_GID` | 對應主機使用者，避免 `./data` 權限錯亂 | `10000` |
+| `HERMES_UID` / `HERMES_GID` | 對應主機使用者，避免 `./data` 權限錯亂 | compose 內 `10000`；`.env.example` 為 `1000` |
+| `TZ` | 容器時區 | `Asia/Taipei` |
 | `HERMES_GATEWAY_PORT` | Gateway 對外 port | `8642` |
 | `HERMES_DASHBOARD_PORT` | Dashboard 對外 port | `9119` |
+| `HERMES_VNC_PORT` | VNC 對外 port | `5901` |
+| `HERMES_NOVNC_WS_PORT` | noVNC WebSocket 對外 port | `6080` |
+| `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP 對外 port | `6081` |
 | `HERMES_DASHBOARD` | 啟用 Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard 基本認證 | — |
-| `VNC_PASSWORD` | VNC 密碼（僅在首次建立 `data/.vnc/passwd` 時寫入） | — |
-| `VNC_GEOMETRY` | 桌面解析度 | `1920x1080` |
+| `VNC_PASSWORD` | VNC 密碼（僅在首次建立 passwd 檔時寫入） | — |
+| `VNC_DISPLAY` / `VNC_PORT` / `VNC_GEOMETRY` | VNC 顯示編號、port、解析度 | `:1` / `5901` / `1920x1080` |
 | `HERMES_MEMORY_LIMIT` / `HERMES_CPU_LIMIT` | 資源上限（見下方說明） | `8G` / `4.0` |
 
 ### UID / GID 說明
@@ -116,19 +135,24 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 `docker-compose.yml` 中的 `deploy.resources.limits` **僅在 Docker Swarm 模式下生效**。一般 `docker compose up` 不會套用記憶體與 CPU 上限；若需限制，請在 Docker Desktop 設定中調整，或改用 Swarm。
 
+容器另設定 `shm_size: 2g`，供 Chrome 與 GUI 程序使用共享記憶體。
+
 ## 專案結構
 
 ```
 .
-├── docker-compose.yml      # 服務定義（gateway、setup）
-├── Dockerfile.gui          # 衍生映像：官方 Hermes + 桌面環境
-├── .env.example            # 環境變數範本
-├── data/                   # 持久化資料（git 忽略，首次執行後產生）
+├── docker-compose.yml          # 服務定義（gateway、setup）
+├── Dockerfile.gui              # 衍生映像：官方 Hermes + 桌面環境
+├── .env.example                # 環境變數範本
+├── .gitattributes              # 強制 shell / s6 腳本使用 LF 換行
+├── data/                       # 持久化資料（git 忽略，首次執行後產生）
+├── scripts/
+│   └── migrate-local-hermes.py # 本機 Hermes 設定遷移至 ./data
 └── docker/gui/
-    ├── cont-init-vnc.sh    # 容器啟動時準備 VNC 設定
-    ├── hermes-vnc-restart.sh
-    ├── xstartup.default    # XFCE + IBus 工作階段
-    └── s6-gui-stack/       # s6 長駐服務：VNC + noVNC
+    ├── cont-init-vnc.sh        # 容器啟動時準備 VNC 設定
+    ├── hermes-vnc-restart.sh   # 手動重啟 GUI stack（除錯用）
+    ├── xstartup.default        # XFCE + IBus 工作階段
+    └── s6-gui-stack/           # s6 長駐服務：VNC + noVNC
 ```
 
 ## 安全注意事項
@@ -136,7 +160,7 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 1. **勿將 VNC / noVNC port 暴露到公網**。預設會對外映射 `5901`、`6080`、`6081`；僅在受信任的本機或內網使用。
 2. **務必修改預設密碼**：`VNC_PASSWORD` 與 Dashboard 的 `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`。
 3. **Dashboard 對外服務時**請設定 Basic Auth，並建議設定 `HERMES_DASHBOARD_BASIC_AUTH_SECRET`（可用 `openssl rand -hex 32` 產生）以維持 session 穩定。
-4. **VNC 密碼僅在首次啟動寫入**。若要變更，刪除 `data/.vnc/passwd` 後修改 `.env` 中的 `VNC_PASSWORD` 再重啟容器。
+4. **VNC 密碼僅在首次啟動寫入** `data/.vnc/passwd` 與 `data/.config/tigervnc/passwd`。若要變更，刪除這兩個檔案後修改 `.env` 中的 `VNC_PASSWORD` 再重啟容器。
 
 ## 疑難排解
 
@@ -156,6 +180,10 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 ```bash
 sudo chown -R "$(id -u):$(id -g)" ./data
 ```
+
+### Windows 上腳本換行問題
+
+專案透過 `.gitattributes` 與 `Dockerfile.gui` 建置時的 CRLF  stripping，確保 shell / s6 腳本在 Linux 容器內可正常執行。若在 Windows 直接編輯 `docker/gui/` 下的腳本，請確認儲存為 LF 換行。
 
 ### 連接主機上的服務（如 Ollama）
 
