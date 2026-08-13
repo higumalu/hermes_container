@@ -8,7 +8,7 @@
 
 - **Gateway**：Hermes Agent 主要服務（預設 port `8642`）
 - **Dashboard**：Web 管理介面（預設 port `9119`）
-- **noVNC**：瀏覽器遠端桌面（預設 HTTP `6081`、WebSocket `6080`）
+- **noVNC**：瀏覽器遠端桌面，網頁與 WebSocket 共用同一個 port（預設 `6080`）
 - **Chrome**：Agent 瀏覽器自動化（amd64 為 Google Chrome，其他架構為 Chromium）
 - **注音輸入**：IBus Chewing，可在 XFCE 桌面使用；並預裝 Noto CJK 字型，桌面與 Chrome 都能正常顯示中文
 - **GUI 自動化套件**：映像內預裝 `pyautogui`、`pynput`、`Pillow`、`crawl4ai`，支援螢幕操作與網頁擷取
@@ -70,7 +70,7 @@ docker compose up -d --build
 
 | 服務 | 預設網址 |
 |------|----------|
-| noVNC 桌面 | http://localhost:6081/vnc_lite.html?host=localhost&port=6080 |
+| noVNC 桌面 | http://localhost:6080/vnc_lite.html |
 | Dashboard | http://localhost:9119 |
 | Gateway | http://localhost:8642 |
 | SearXNG | http://localhost:18080 |
@@ -135,13 +135,12 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 | 變數 | 說明 | 預設 |
 |------|------|------|
-| `HERMES_UID` / `HERMES_GID` | 對應主機使用者，避免 `./data` 權限錯亂 | compose 內 `10000`；`.env.example` 為 `1000` |
+| `HERMES_UID` / `HERMES_GID` | 對應主機使用者，避免 `./data` 權限錯亂 | `1000` |
 | `TZ` | 容器時區 | `Asia/Taipei` |
 | `HERMES_GATEWAY_PORT` | Gateway 對外 port | `8642` |
 | `HERMES_DASHBOARD_PORT` | Dashboard 對外 port | `9119` |
 | `HERMES_VNC_PORT` | VNC 對外 port | `5901` |
-| `HERMES_NOVNC_WS_PORT` | noVNC WebSocket 對外 port | `6080` |
-| `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP 對外 port | `6081` |
+| `HERMES_NOVNC_PORT` | noVNC 對外 port（網頁 + WebSocket） | `6080` |
 | `HERMES_GUI_BIND_ADDRESS` | VNC / noVNC port 綁定的主機介面 | `127.0.0.1` |
 | `HERMES_SEARXNG_PORT` | SearXNG 對外 port（綁定 `127.0.0.1`） | `18080` |
 | `SEARXNG_SECRET` | SearXNG secret key，未設定則無法啟動 | 僅本機用的 fallback |
@@ -154,7 +153,7 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 ### UID / GID 說明
 
-`HERMES_UID` 與 `HERMES_GID` 應與執行 Docker 的使用者一致，容器內 `hermes` 使用者才會正確擁有 `./data` 下的檔案。
+`HERMES_UID` 與 `HERMES_GID` 應與執行 Docker 的使用者一致，容器內 `hermes` 使用者才會正確擁有 `./data` 下的檔案。映像內建的 `hermes` 使用者是 UID 10000，entrypoint 會依這兩個變數重新映射，因此這裡的預設值是 `1000` 而非映像的 10000。
 
 - **Linux / WSL**：`id -u` 與 `id -g`
 - **macOS**：通常為 `501` / `20`，或依 `id` 輸出為準
@@ -189,7 +188,7 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 ## 安全注意事項
 
-1. **勿將 VNC / noVNC port 暴露到公網**。預設 `5901`、`6080`、`6081` 只綁定 `127.0.0.1`。若設定 `HERMES_GUI_BIND_ADDRESS=0.0.0.0`，桌面會出現在主機所有介面上，而唯一的防線只有一組 8 字元的 VNC 密碼；僅在受信任的網路這麼做。
+1. **勿將 VNC / noVNC port 暴露到公網**。預設 `5901`、`6080` 只綁定 `127.0.0.1`。若設定 `HERMES_GUI_BIND_ADDRESS=0.0.0.0`，桌面會出現在主機所有介面上，而唯一的防線只有一組 8 字元的 VNC 密碼；僅在受信任的網路這麼做。
 2. **務必修改預設密碼**：`VNC_PASSWORD` 與 Dashboard 的 `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`。
 3. **Dashboard 對外服務時**請設定 Basic Auth，並建議設定 `HERMES_DASHBOARD_BASIC_AUTH_SECRET`（可用 `openssl rand -hex 32` 產生）以維持 session 穩定。
 4. **VNC 密碼僅在首次啟動寫入** `data/.vnc/passwd` 與 `data/.config/tigervnc/passwd`。若要變更，刪除這兩個檔案後修改 `.env` 中的 `VNC_PASSWORD` 再重啟容器。
@@ -203,7 +202,7 @@ docker compose logs gateway
 docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 ```
 
-確認 port `6080`、`6081` 未被其他程式佔用。
+確認 port `6080` 未被其他程式佔用。
 
 ### `./data` 權限錯誤
 

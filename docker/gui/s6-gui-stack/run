@@ -7,11 +7,9 @@ VNC_DISPLAY="${VNC_DISPLAY:-:1}"
 VNC_PORT="${VNC_PORT:-5901}"
 VNC_GEOMETRY="${VNC_GEOMETRY:-1920x1080}"
 NOVNC_WS_PORT="${NOVNC_WS_PORT:-6080}"
-NOVNC_HTTP_PORT="${NOVNC_HTTP_PORT:-6081}"
 XSTARTUP="${HERMES_HOME}/.vnc/xstartup"
 
 WS_PID=""
-HTTP_PID=""
 
 as_hermes() {
   if [ "$(id -un)" = "hermes" ]; then
@@ -22,7 +20,6 @@ as_hermes() {
 }
 
 cleanup() {
-  [ -n "${HTTP_PID}" ] && kill "${HTTP_PID}" 2>/dev/null || true
   [ -n "${WS_PID}" ] && kill "${WS_PID}" 2>/dev/null || true
   as_hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
 }
@@ -44,11 +41,14 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-websockify "0.0.0.0:${NOVNC_WS_PORT}" "127.0.0.1:${VNC_PORT}" &
+# --web serves the noVNC HTML from the same port as the WebSocket, so
+# vnc_lite.html defaults its host/port to the page's own and needs no query
+# string. Saves a published port and a second network-facing process.
+# Runs as hermes: the port is above 1024, so nothing here needs root.
+as_hermes websockify --web /usr/share/novnc "0.0.0.0:${NOVNC_WS_PORT}" "127.0.0.1:${VNC_PORT}" &
 WS_PID=$!
 
-cd /usr/share/novnc
-python3 -m http.server "${NOVNC_HTTP_PORT}" --bind 0.0.0.0 &
-HTTP_PID=$!
-
-wait "${VNC_PID}"
+# Exit as soon as either process dies so s6 restarts the whole stack. Waiting on
+# vncserver alone left a dead websockify unnoticed: the desktop looked healthy
+# but nothing could connect to it.
+wait -n "${VNC_PID}" "${WS_PID}"

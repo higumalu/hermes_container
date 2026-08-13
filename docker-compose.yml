@@ -13,7 +13,7 @@
 #   docker compose logs -f gateway
 #
 # noVNC (after container is up):
-#   http://localhost:6081/vnc_lite.html?host=localhost&port=6080
+#   http://localhost:6080/vnc_lite.html
 
 services:
   gateway:
@@ -27,17 +27,19 @@ services:
     ports:
       - "${HERMES_GATEWAY_PORT:-8642}:8642"
       - "${HERMES_DASHBOARD_PORT:-9119}:9119"
-      # Container side follows VNC_PORT / NOVNC_*_PORT so changing them stays reachable.
+      # Container side follows VNC_PORT / NOVNC_WS_PORT so changing them stays reachable.
       # GUI ports bind to loopback only; set HERMES_GUI_BIND_ADDRESS=0.0.0.0 to expose them.
+      # websockify serves both the noVNC page and the WebSocket on one port.
       - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_VNC_PORT:-5901}:${VNC_PORT:-5901}"
-      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_NOVNC_WS_PORT:-6080}:${NOVNC_WS_PORT:-6080}"
-      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_NOVNC_HTTP_PORT:-6081}:${NOVNC_HTTP_PORT:-6081}"
+      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_NOVNC_PORT:-6080}:${NOVNC_WS_PORT:-6080}"
     volumes:
       - ./data:/opt/data
     environment:
       - TZ=${TZ:-Asia/Taipei}
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
+      # The image's own hermes user is UID 10000, which leaves ./data unwritable
+      # by a typical Linux/WSL host user; the entrypoint remaps it from these.
+      - HERMES_UID=${HERMES_UID:-1000}
+      - HERMES_GID=${HERMES_GID:-1000}
       - HERMES_DASHBOARD=${HERMES_DASHBOARD:-1}
       - HERMES_DASHBOARD_BASIC_AUTH_USERNAME=${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-}
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
@@ -52,7 +54,6 @@ services:
       - VNC_PORT=${VNC_PORT:-5901}
       - VNC_GEOMETRY=${VNC_GEOMETRY:-1920x1080}
       - NOVNC_WS_PORT=${NOVNC_WS_PORT:-6080}
-      - NOVNC_HTTP_PORT=${NOVNC_HTTP_PORT:-6081}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -99,8 +100,8 @@ services:
       - ./data:/opt/data
     environment:
       - TZ=${TZ:-Asia/Taipei}
-      - HERMES_UID=${HERMES_UID:-10000}
-      - HERMES_GID=${HERMES_GID:-10000}
+      - HERMES_UID=${HERMES_UID:-1000}
+      - HERMES_GID=${HERMES_GID:-1000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

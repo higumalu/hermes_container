@@ -10,7 +10,6 @@ s6-svc -d /run/service/gui-stack 2>/dev/null || true
 sleep 1
 s6-setuidgid hermes vncserver -kill "${VNC_DISPLAY}" 2>/dev/null || true
 pkill -f "websockify.*${VNC_PORT}" 2>/dev/null || true
-pkill -f "python3 -m http.server ${NOVNC_HTTP_PORT:-6081}" 2>/dev/null || true
 s6-svc -u /run/service/gui-stack
 
-echo "GUI stack restarted. noVNC: http://localhost:${NOVNC_HTTP_PORT:-6081}/vnc_lite.html?host=localhost&port=${NOVNC_WS_PORT:-6080}"
+echo "GUI stack restarted. noVNC: http://localhost:${NOVNC_WS_PORT:-6080}/vnc_lite.html"
