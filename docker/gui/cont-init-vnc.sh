@@ -22,14 +22,21 @@ ibus-daemon -drx &\
 fi
 
 if [ -n "${VNC_PASSWORD:-}" ]; then
-  if [ ! -f "${TIGERVNC_DIR}/passwd" ]; then
-    echo "${VNC_PASSWORD}" | vncpasswd -f > "${TIGERVNC_DIR}/passwd"
-    chmod 600 "${TIGERVNC_DIR}/passwd"
+  if [ "${#VNC_PASSWORD}" -gt 8 ]; then
+    echo "cont-init-vnc: note - the VNC protocol only uses the first 8 characters of VNC_PASSWORD." >&2
   fi
-  if [ ! -f "${VNC_DIR}/passwd" ]; then
-    echo "${VNC_PASSWORD}" | vncpasswd -f > "${VNC_DIR}/passwd"
-    chmod 600 "${VNC_DIR}/passwd"
-  fi
+  for passwd_file in "${TIGERVNC_DIR}/passwd" "${VNC_DIR}/passwd"; do
+    if [ ! -f "${passwd_file}" ]; then
+      echo "${VNC_PASSWORD}" | vncpasswd -f > "${passwd_file}"
+      chmod 600 "${passwd_file}"
+    fi
+  done
+elif [ ! -f "${TIGERVNC_DIR}/passwd" ] && [ ! -f "${VNC_DIR}/passwd" ]; then
+  # vncserver prompts for a password it can never read, exits 1, and s6 would
+  # restart gui-stack forever with only a black noVNC screen to show for it.
+  echo "cont-init-vnc: VNC_PASSWORD is empty and no password file exists." >&2
+  echo "cont-init-vnc: vncserver cannot start without one. Set VNC_PASSWORD in .env and restart." >&2
+  exit 1
 fi
 
 if id hermes >/dev/null 2>&1; then

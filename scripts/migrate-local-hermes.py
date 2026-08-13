@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["pyyaml"]
+# ///
 """Migrate LLM model and skill settings from local Hermes to Docker data/."""
 
 from __future__ import annotations
 
-import re
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 
-LOCAL_HERMES = Path(r"C:\Users\HIGUMALU\AppData\Local\hermes")
+# Local Hermes data directory. Defaults to %LOCALAPPDATA%\hermes on Windows;
+# override with the LOCAL_HERMES environment variable.
+LOCAL_HERMES = Path(
+    os.environ.get("LOCAL_HERMES")
+    or Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "hermes"
+)
 DOCKER_DATA = Path(__file__).resolve().parents[1] / "data"
 
 MERGE_KEYS = [
@@ -92,6 +101,11 @@ def dump_yaml(path: Path, data: dict) -> None:
 def merge_config() -> None:
     local_cfg = load_yaml(LOCAL_HERMES / "config.yaml")
     docker_cfg_path = DOCKER_DATA / "config.yaml"
+    if not docker_cfg_path.exists():
+        raise SystemExit(
+            f"{docker_cfg_path} not found — run first-time setup before migrating:\n"
+            "  docker compose --profile setup run --rm setup"
+        )
     docker_cfg = load_yaml(docker_cfg_path)
 
     backup = docker_cfg_path.with_name(
@@ -155,6 +169,9 @@ def merge_env() -> None:
 def copy_skills() -> None:
     src = LOCAL_HERMES / "skills"
     dst = DOCKER_DATA / "skills"
+    if not src.exists():
+        print(f"no skills to copy ({src} does not exist)")
+        return
     exclude = {".archive", ".curator_backups", ".hub"}
 
     copied = 0
@@ -182,6 +199,7 @@ def copy_profiles() -> None:
     src = LOCAL_HERMES / "profiles"
     dst = DOCKER_DATA / "profiles"
     if not src.exists():
+        print(f"no profiles to copy ({src} does not exist)")
         return
 
     for profile_dir in src.iterdir():

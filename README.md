@@ -77,12 +77,17 @@ docker compose up -d --build
 
 If you previously installed Hermes Agent natively on Windows, use [`scripts/migrate-local-hermes.py`](scripts/migrate-local-hermes.py) to merge models, API keys, skills, and profiles into `./data`:
 
-1. Edit `LOCAL_HERMES` at the top of the script to point at your local Hermes data directory (default: `%LOCALAPPDATA%\hermes`)
-2. Complete **first-time setup** (`setup`) above so `./data/config.yaml` exists
-3. Run the migration (requires PyYAML):
+1. Complete **first-time setup** (`setup`) above so `./data/config.yaml` exists
+2. Run the migration — the script reads `%LOCALAPPDATA%\hermes` by default and declares PyYAML inline, so `uv run` installs it for you:
 
 ```bash
 uv run scripts/migrate-local-hermes.py
+```
+
+To migrate from a different location, set `LOCAL_HERMES`:
+
+```bash
+LOCAL_HERMES=/path/to/hermes uv run scripts/migrate-local-hermes.py
 ```
 
 The script backs up `data/config.yaml` and rewrites `localhost` URLs to `host.docker.internal` for in-container connectivity.

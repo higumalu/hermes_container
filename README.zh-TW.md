@@ -77,12 +77,17 @@ docker compose up -d --build
 
 若先前已在 Windows 本機安裝 Hermes Agent，可使用 [`scripts/migrate-local-hermes.py`](scripts/migrate-local-hermes.py) 將模型、API 金鑰、skills 與 profiles 合併至 `./data`：
 
-1. 編輯腳本頂端的 `LOCAL_HERMES`，指向本機 Hermes 資料目錄（預設為 `%LOCALAPPDATA%\hermes`）
-2. 先完成上述 **首次設定**（`setup`），確保 `./data/config.yaml` 已存在
-3. 執行遷移（需安裝 PyYAML）：
+1. 先完成上述 **首次設定**（`setup`），確保 `./data/config.yaml` 已存在
+2. 執行遷移 —— 腳本預設讀取 `%LOCALAPPDATA%\hermes`，並以 inline metadata 宣告 PyYAML，`uv run` 會自動安裝：
 
 ```bash
 uv run scripts/migrate-local-hermes.py
+```
+
+若要從其他位置遷移，設定 `LOCAL_HERMES`：
+
+```bash
+LOCAL_HERMES=/path/to/hermes uv run scripts/migrate-local-hermes.py
 ```
 
 腳本會自動備份 `data/config.yaml`，並將 `localhost` URL 改寫為 `host.docker.internal` 以在容器內正常連線。
