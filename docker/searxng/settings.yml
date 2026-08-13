@@ -1,0 +1,30 @@
+# SearXNG configuration for the Hermes web-search backend.
+#
+# Only overrides live here; `use_default_settings: true` pulls the full upstream
+# settings (engine list, categories, plugins) from the image, so this file does
+# not need touching when SearXNG ships new engines.
+#
+# Mounted read-only at /etc/searxng/settings.yml. It is deliberately not mounted
+# as a directory: the container chowns its config dir to its own uid, which would
+# leave a git-tracked file the host user can no longer write.
+#
+# secret_key is intentionally absent. SearXNG refuses to start while it is the
+# upstream "ultrasecretkey" default, so it comes from SEARXNG_SECRET in the
+# environment rather than being committed here.
+
+use_default_settings: true
+
+general:
+  instance_name: "Hermes SearXNG"
+
+search:
+  # Hermes' searxng provider calls /search?format=json. Without json listed here
+  # that request returns 403 and web_search fails while the web UI still works.
+  formats:
+    - html
+    - json
+
+server:
+  # Reachable only over the compose network and loopback, so no bot limiter.
+  limiter: false
+  public_instance: false

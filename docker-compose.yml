@@ -44,6 +44,9 @@ services:
       - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
       - DISPLAY=${VNC_DISPLAY:-:1}
       - AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/google-chrome
+      # Read by Hermes' bundled searxng web-search provider. Resolves over the
+      # compose network, so it does not depend on the published port.
+      - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
       - VNC_PASSWORD=${VNC_PASSWORD:-}
       - VNC_DISPLAY=${VNC_DISPLAY:-:1}
       - VNC_PORT=${VNC_PORT:-5901}
@@ -52,12 +55,38 @@ services:
       - NOVNC_HTTP_PORT=${NOVNC_HTTP_PORT:-6081}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - searxng
     shm_size: "2g"
     deploy:
       resources:
         limits:
           memory: ${HERMES_MEMORY_LIMIT:-8G}
           cpus: "${HERMES_CPU_LIMIT:-4.0}"
+
+  # Self-hosted metasearch engine used as Hermes' web_search backend, so search
+  # needs no third-party API key. The agent reaches it at http://searxng:8080 over
+  # the compose network; the published port is only for opening the UI yourself.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: hermes-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${HERMES_SEARXNG_PORT:-18080}:8080"
+    volumes:
+      - ./docker/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    environment:
+      - TZ=${TZ:-Asia/Taipei}
+      # SearXNG exits on startup while secret_key is the upstream default.
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-hermes-searxng-local-only}
+      - SEARXNG_BASE_URL=http://localhost:${HERMES_SEARXNG_PORT:-18080}/
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
 
   setup:
     image: nousresearch/hermes-agent:latest
@@ -74,3 +103,6 @@ services:
       - HERMES_GID=${HERMES_GID:-10000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  searxng-cache:

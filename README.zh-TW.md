@@ -12,6 +12,7 @@
 - **Chrome**：Agent 瀏覽器自動化（amd64 為 Google Chrome，其他架構為 Chromium）
 - **注音輸入**：IBus Chewing，可在 XFCE 桌面使用；並預裝 Noto CJK 字型，桌面與 Chrome 都能正常顯示中文
 - **GUI 自動化套件**：映像內預裝 `pyautogui`、`pynput`、`Pillow`、`crawl4ai`，支援螢幕操作與網頁擷取
+- **SearXNG**：自架元搜尋實例，已接成 Hermes 的 `web_search` 後端，搜尋不需任何第三方 API 金鑰（UI 在 `127.0.0.1:18080`）
 
 ## 需求
 
@@ -72,6 +73,23 @@ docker compose up -d --build
 | noVNC 桌面 | http://localhost:6081/vnc_lite.html?host=localhost&port=6080 |
 | Dashboard | http://localhost:9119 |
 | Gateway | http://localhost:8642 |
+| SearXNG | http://localhost:18080 |
+
+## 網頁搜尋後端
+
+`docker compose up` 會一併啟動 [SearXNG](https://docs.searxng.org/) 實例，並透過 `SEARXNG_URL=http://searxng:8080`（走 compose 網路解析）讓 Hermes 使用它。在 `data/config.yaml` 指定後端即可啟用：
+
+```yaml
+web:
+  search_backend: "searxng"
+```
+
+注意事項：
+
+- 設定檔在 [`docker/searxng/settings.yml`](docker/searxng/settings.yml)，以唯讀方式掛載。它設了 `use_default_settings: true`，引擎清單來自映像本身，版控裡只放覆寫項目。
+- `formats` 必須包含 `json` —— Hermes 呼叫的是 `/search?format=json`，只開 `html` 時該請求會回 403，但網頁 UI 仍然正常，因此很容易誤判。
+- 請在 `.env` 設定 `SEARXNG_SECRET`（`openssl rand -hex 32`）。SearXNG 拒絕以上游預設 secret 啟動；compose 提供了一個僅供本機使用的 fallback，讓服務不必設定就能起來。
+- SearXNG 查詢的是公開引擎，會遇到速率限制與 CAPTCHA。大量自動化搜尋會讓引擎被暫時停用 —— 結果為空時，檢查 JSON 回應中的 `unresponsive_engines`。
 
 ## 從本機 Hermes 遷移設定（選用）
 
@@ -125,6 +143,9 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 | `HERMES_NOVNC_WS_PORT` | noVNC WebSocket 對外 port | `6080` |
 | `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP 對外 port | `6081` |
 | `HERMES_GUI_BIND_ADDRESS` | VNC / noVNC port 綁定的主機介面 | `127.0.0.1` |
+| `HERMES_SEARXNG_PORT` | SearXNG 對外 port（綁定 `127.0.0.1`） | `18080` |
+| `SEARXNG_SECRET` | SearXNG secret key，未設定則無法啟動 | 僅本機用的 fallback |
+| `SEARXNG_URL` | Hermes 尋找 SearXNG 的位址 | `http://searxng:8080` |
 | `HERMES_DASHBOARD` | 啟用 Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard 基本認證 | — |
 | `VNC_PASSWORD` | VNC 密碼（僅在首次建立 passwd 檔時寫入；VNC 協定只取前 8 個字元） | — |
@@ -149,18 +170,21 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 ```
 .
-├── docker-compose.yml          # 服務定義（gateway、setup）
+├── docker-compose.yml          # 服務定義（gateway、searxng、setup）
 ├── Dockerfile.gui              # 衍生映像：官方 Hermes + 桌面環境
 ├── .env.example                # 環境變數範本
 ├── .gitattributes              # 強制 shell / s6 腳本使用 LF 換行
 ├── data/                       # 持久化資料（git 忽略，首次執行後產生）
 ├── scripts/
 │   └── migrate-local-hermes.py # 本機 Hermes 設定遷移至 ./data
-└── docker/gui/
-    ├── cont-init-vnc.sh        # 容器啟動時準備 VNC 設定
-    ├── hermes-vnc-restart.sh   # 手動重啟 GUI stack（除錯用）
-    ├── xstartup.default        # XFCE + IBus 工作階段
-    └── s6-gui-stack/           # s6 長駐服務：VNC + noVNC
+└── docker/
+    ├── gui/
+    │   ├── cont-init-vnc.sh    # 容器啟動時準備 VNC 設定
+    │   ├── hermes-vnc-restart.sh # 手動重啟 GUI stack（除錯用）
+    │   ├── xstartup.default    # XFCE + IBus 工作階段
+    │   └── s6-gui-stack/       # s6 長駐服務：VNC + noVNC
+    └── searxng/
+        └── settings.yml        # SearXNG 覆寫設定（唯讀掛載）
 ```
 
 ## 安全注意事項

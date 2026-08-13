@@ -12,6 +12,7 @@ A Docker setup that extends the official [nousresearch/hermes-agent](https://hub
 - **Chrome**: Browser automation for the agent (Google Chrome on amd64, Chromium on other architectures)
 - **Zhuyin input**: IBus Chewing for Traditional Chinese input on the XFCE desktop, with Noto CJK fonts so Chinese renders in the desktop and Chrome
 - **GUI automation packages**: Pre-installed `pyautogui`, `pynput`, `Pillow`, and `crawl4ai` for screen control and web scraping
+- **SearXNG**: Self-hosted metasearch instance wired up as Hermes' `web_search` backend, so search needs no third-party API key (UI on `127.0.0.1:18080`)
 
 ## Requirements
 
@@ -72,6 +73,23 @@ docker compose up -d --build
 | noVNC desktop | http://localhost:6081/vnc_lite.html?host=localhost&port=6080 |
 | Dashboard | http://localhost:9119 |
 | Gateway | http://localhost:8642 |
+| SearXNG | http://localhost:18080 |
+
+## Web search backend
+
+`docker compose up` also starts a [SearXNG](https://docs.searxng.org/) instance and points Hermes at it through `SEARXNG_URL=http://searxng:8080`, resolved over the compose network. Tell Hermes to use it by setting the backend in `data/config.yaml`:
+
+```yaml
+web:
+  search_backend: "searxng"
+```
+
+Notes:
+
+- Config lives in [`docker/searxng/settings.yml`](docker/searxng/settings.yml) and is mounted read-only. It sets `use_default_settings: true`, so the engine list comes from the image; only the overrides are tracked.
+- `formats` must include `json` — Hermes calls `/search?format=json`, which returns 403 when only `html` is enabled (the web UI keeps working, which makes this easy to misdiagnose).
+- Set `SEARXNG_SECRET` in `.env` (`openssl rand -hex 32`). SearXNG refuses to start on the upstream default secret; compose ships a local-only fallback so the stack comes up without configuration.
+- SearXNG queries public engines, which rate-limit and serve CAPTCHAs. Heavy automated searching will get engines temporarily suspended — check `unresponsive_engines` in the JSON response when results come back empty.
 
 ## Migrate from local Hermes (optional)
 
@@ -125,6 +143,9 @@ See [`.env.example`](.env.example) for a full template.
 | `HERMES_NOVNC_WS_PORT` | noVNC WebSocket host port | `6080` |
 | `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP host port | `6081` |
 | `HERMES_GUI_BIND_ADDRESS` | Host interface for the VNC / noVNC ports | `127.0.0.1` |
+| `HERMES_SEARXNG_PORT` | SearXNG host port (bound to `127.0.0.1`) | `18080` |
+| `SEARXNG_SECRET` | SearXNG secret key; it will not start without one | local-only fallback |
+| `SEARXNG_URL` | Where Hermes looks for SearXNG | `http://searxng:8080` |
 | `HERMES_DASHBOARD` | Enable Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard basic auth | — |
 | `VNC_PASSWORD` | VNC password (written only on first passwd file creation; truncated to 8 characters by the VNC protocol) | — |
@@ -149,18 +170,21 @@ The container also sets `shm_size: 2g` for Chrome and GUI processes.
 
 ```
 .
-├── docker-compose.yml          # Service definitions (gateway, setup)
+├── docker-compose.yml          # Service definitions (gateway, searxng, setup)
 ├── Dockerfile.gui              # Derived image: official Hermes + desktop stack
 ├── .env.example                # Environment variable template
 ├── .gitattributes              # Enforce LF line endings for shell / s6 scripts
 ├── data/                       # Persistent data (gitignored, created on first run)
 ├── scripts/
 │   └── migrate-local-hermes.py # Migrate local Hermes settings into ./data
-└── docker/gui/
-    ├── cont-init-vnc.sh        # Prepare VNC config on container start
-    ├── hermes-vnc-restart.sh   # Manual GUI stack restart (debug)
-    ├── xstartup.default        # XFCE + IBus session
-    └── s6-gui-stack/           # s6 long-running services: VNC + noVNC
+└── docker/
+    ├── gui/
+    │   ├── cont-init-vnc.sh    # Prepare VNC config on container start
+    │   ├── hermes-vnc-restart.sh # Manual GUI stack restart (debug)
+    │   ├── xstartup.default    # XFCE + IBus session
+    │   └── s6-gui-stack/       # s6 long-running services: VNC + noVNC
+    └── searxng/
+        └── settings.yml        # SearXNG overrides (mounted read-only)
 ```
 
 ## Security
