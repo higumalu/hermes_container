@@ -27,9 +27,11 @@ services:
     ports:
       - "${HERMES_GATEWAY_PORT:-8642}:8642"
       - "${HERMES_DASHBOARD_PORT:-9119}:9119"
-      - "${HERMES_VNC_PORT:-5901}:5901"
-      - "${HERMES_NOVNC_WS_PORT:-6080}:6080"
-      - "${HERMES_NOVNC_HTTP_PORT:-6081}:6081"
+      # Container side follows VNC_PORT / NOVNC_*_PORT so changing them stays reachable.
+      # GUI ports bind to loopback only; set HERMES_GUI_BIND_ADDRESS=0.0.0.0 to expose them.
+      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_VNC_PORT:-5901}:${VNC_PORT:-5901}"
+      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_NOVNC_WS_PORT:-6080}:${NOVNC_WS_PORT:-6080}"
+      - "${HERMES_GUI_BIND_ADDRESS:-127.0.0.1}:${HERMES_NOVNC_HTTP_PORT:-6081}:${NOVNC_HTTP_PORT:-6081}"
     volumes:
       - ./data:/opt/data
     environment:

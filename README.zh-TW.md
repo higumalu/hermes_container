@@ -10,7 +10,7 @@
 - **Dashboard**：Web 管理介面（預設 port `9119`）
 - **noVNC**：瀏覽器遠端桌面（預設 HTTP `6081`、WebSocket `6080`）
 - **Chrome**：Agent 瀏覽器自動化（amd64 為 Google Chrome，其他架構為 Chromium）
-- **注音輸入**：IBus Chewing，可在 XFCE 桌面使用
+- **注音輸入**：IBus Chewing，可在 XFCE 桌面使用；並預裝 Noto CJK 字型，桌面與 Chrome 都能正常顯示中文
 - **GUI 自動化套件**：映像內預裝 `pyautogui`、`pynput`、`Pillow`、`crawl4ai`，支援螢幕操作與網頁擷取
 
 ## 需求
@@ -119,10 +119,11 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 | `HERMES_VNC_PORT` | VNC 對外 port | `5901` |
 | `HERMES_NOVNC_WS_PORT` | noVNC WebSocket 對外 port | `6080` |
 | `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP 對外 port | `6081` |
+| `HERMES_GUI_BIND_ADDRESS` | VNC / noVNC port 綁定的主機介面 | `127.0.0.1` |
 | `HERMES_DASHBOARD` | 啟用 Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard 基本認證 | — |
-| `VNC_PASSWORD` | VNC 密碼（僅在首次建立 passwd 檔時寫入） | — |
-| `VNC_DISPLAY` / `VNC_PORT` / `VNC_GEOMETRY` | VNC 顯示編號、port、解析度 | `:1` / `5901` / `1920x1080` |
+| `VNC_PASSWORD` | VNC 密碼（僅在首次建立 passwd 檔時寫入；VNC 協定只取前 8 個字元） | — |
+| `VNC_DISPLAY` / `VNC_PORT` / `VNC_GEOMETRY` | VNC 顯示編號、容器內 port、解析度 | `:1` / `5901` / `1920x1080` |
 | `HERMES_MEMORY_LIMIT` / `HERMES_CPU_LIMIT` | 資源上限（見下方說明） | `8G` / `4.0` |
 
 ### UID / GID 說明
@@ -159,7 +160,7 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 
 ## 安全注意事項
 
-1. **勿將 VNC / noVNC port 暴露到公網**。預設會對外映射 `5901`、`6080`、`6081`；僅在受信任的本機或內網使用。
+1. **勿將 VNC / noVNC port 暴露到公網**。預設 `5901`、`6080`、`6081` 只綁定 `127.0.0.1`。若設定 `HERMES_GUI_BIND_ADDRESS=0.0.0.0`，桌面會出現在主機所有介面上，而唯一的防線只有一組 8 字元的 VNC 密碼；僅在受信任的網路這麼做。
 2. **務必修改預設密碼**：`VNC_PASSWORD` 與 Dashboard 的 `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`。
 3. **Dashboard 對外服務時**請設定 Basic Auth，並建議設定 `HERMES_DASHBOARD_BASIC_AUTH_SECRET`（可用 `openssl rand -hex 32` 產生）以維持 session 穩定。
 4. **VNC 密碼僅在首次啟動寫入** `data/.vnc/passwd` 與 `data/.config/tigervnc/passwd`。若要變更，刪除這兩個檔案後修改 `.env` 中的 `VNC_PASSWORD` 再重啟容器。

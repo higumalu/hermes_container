@@ -35,6 +35,8 @@ RUN apt-get update \
         ibus \
         ibus-chewing \
         ibus-gtk3 \
+        fonts-noto-cjk \
+        fonts-noto-color-emoji \
         gnupg \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*

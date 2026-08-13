@@ -10,7 +10,7 @@ A Docker setup that extends the official [nousresearch/hermes-agent](https://hub
 - **Dashboard**: Web management UI (default port `9119`)
 - **noVNC**: Browser-based remote desktop (default HTTP `6081`, WebSocket `6080`)
 - **Chrome**: Browser automation for the agent (Google Chrome on amd64, Chromium on other architectures)
-- **Zhuyin input**: IBus Chewing for Traditional Chinese input on the XFCE desktop
+- **Zhuyin input**: IBus Chewing for Traditional Chinese input on the XFCE desktop, with Noto CJK fonts so Chinese renders in the desktop and Chrome
 - **GUI automation packages**: Pre-installed `pyautogui`, `pynput`, `Pillow`, and `crawl4ai` for screen control and web scraping
 
 ## Requirements
@@ -119,10 +119,11 @@ See [`.env.example`](.env.example) for a full template.
 | `HERMES_VNC_PORT` | VNC host port | `5901` |
 | `HERMES_NOVNC_WS_PORT` | noVNC WebSocket host port | `6080` |
 | `HERMES_NOVNC_HTTP_PORT` | noVNC HTTP host port | `6081` |
+| `HERMES_GUI_BIND_ADDRESS` | Host interface for the VNC / noVNC ports | `127.0.0.1` |
 | `HERMES_DASHBOARD` | Enable Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard basic auth | — |
-| `VNC_PASSWORD` | VNC password (written only on first passwd file creation) | — |
-| `VNC_DISPLAY` / `VNC_PORT` / `VNC_GEOMETRY` | VNC display, port, resolution | `:1` / `5901` / `1920x1080` |
+| `VNC_PASSWORD` | VNC password (written only on first passwd file creation; truncated to 8 characters by the VNC protocol) | — |
+| `VNC_DISPLAY` / `VNC_PORT` / `VNC_GEOMETRY` | VNC display, container-side port, resolution | `:1` / `5901` / `1920x1080` |
 | `HERMES_MEMORY_LIMIT` / `HERMES_CPU_LIMIT` | Resource limits (see below) | `8G` / `4.0` |
 
 ### UID / GID
@@ -159,7 +160,7 @@ The container also sets `shm_size: 2g` for Chrome and GUI processes.
 
 ## Security
 
-1. **Do not expose VNC / noVNC ports to the public internet.** Defaults map `5901`, `6080`, and `6081` to the host; use only on trusted localhost or private networks.
+1. **Do not expose VNC / noVNC ports to the public internet.** By default `5901`, `6080`, and `6081` bind to `127.0.0.1` only. Setting `HERMES_GUI_BIND_ADDRESS=0.0.0.0` publishes the desktop on every host interface, guarded by nothing but an 8-character VNC password — only do that on a trusted network.
 2. **Change default passwords** for `VNC_PASSWORD` and `HERMES_DASHBOARD_BASIC_AUTH_PASSWORD`.
 3. **When exposing Dashboard externally**, enable Basic Auth and set `HERMES_DASHBOARD_BASIC_AUTH_SECRET` (generate with `openssl rand -hex 32`) for stable sessions.
 4. **VNC password is written only on first boot** to `data/.vnc/passwd` and `data/.config/tigervnc/passwd`. To change it, delete both files, update `VNC_PASSWORD` in `.env`, and restart the container.
