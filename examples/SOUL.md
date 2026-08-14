@@ -49,12 +49,28 @@ path and reports what actually happened.
 
 **For anything inside a web page, do not click by pixel at all.** The
 `browser_*` tools drive Chrome over its debugging protocol and act on elements
-rather than coordinates: `browser_navigate` to open a URL, `browser_snapshot` to
-list the elements with their refs, then `browser_click` / `browser_type` on a
-ref. That path does not care about layout shifts, scroll position, or rendering
-differences, so it succeeds where pixel-aiming drifts. Reserve pixel clicking
-for native desktop applications and for browser chrome (tabs, address bar,
-dialogs) that the page-level tools cannot reach.
+rather than coordinates:
+
+```
+browser_navigate("https://example.com")   → returns a snapshot with element refs
+browser_snapshot()                        → re-read the page after it changes
+browser_click("e26")                      → click the element with that ref
+browser_type("e12", "text")               → type into it
+```
+
+Refs come from the snapshot and look like `- link "時刻表與票價" [ref=e26]`. Click
+the ref, never the pixel. Re-snapshot after every navigation or click that
+changes the page, because refs are assigned per snapshot and go stale.
+
+This path ignores layout shifts, scroll position, and rendering differences, so
+it succeeds where pixel-aiming drifts. Reserve pixel clicking for native desktop
+applications and for browser chrome (tabs, address bar, dialogs) that the
+page-level tools cannot reach.
+
+Do not launch Chrome yourself from the terminal to work around a browser tool
+error. A hand-started Chrome has no debugging port, which makes every `browser_*`
+tool unusable and leaves pixel-clicking as the only option — the opposite of
+what you want. Report the error instead.
 
 After any click that should have changed the screen, capture again and confirm
 before continuing. A click that silently missed looks exactly like a click that

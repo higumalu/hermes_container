@@ -62,6 +62,13 @@ RUN set -eux; \
 RUN uv pip install --python /opt/hermes/.venv/bin/python --no-cache-dir \
     pyautogui pynput Pillow crawl4ai
 
+# Driver behind Hermes' browser_* tools. Without it those tools fail and the
+# agent falls back to aiming clicks at pixels, which is far less reliable.
+# No `agent-browser install`: AGENT_BROWSER_EXECUTABLE_PATH points at the Chrome
+# installed above, so there is no need to download a second browser.
+RUN npm install -g agent-browser \
+    && npm cache clean --force
+
 COPY docker/gui/ /docker/gui/
 
 # Strip Windows CRLF so s6 type files and shell scripts work in Linux.

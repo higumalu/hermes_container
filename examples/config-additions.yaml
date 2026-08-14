@@ -37,6 +37,19 @@ computer_use:
   cua_telemetry: false
 
 # ---------------------------------------------------------------------------
+# Browser
+# ---------------------------------------------------------------------------
+browser:
+  # Headed keeps the window on the VNC desktop where you can watch it, and
+  # keeps the session alive between turns instead of tearing it down each time.
+  headed: true
+
+# Terminal working directory. The default "." resolves to the Hermes install
+# tree, so anything the agent writes there is lost on the next image rebuild.
+terminal:
+  cwd: /opt/data
+
+# ---------------------------------------------------------------------------
 # Toolsets
 # ---------------------------------------------------------------------------
 # The setup wizard may fill agent.disabled_toolsets with a long list. These four
