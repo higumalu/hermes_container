@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/command/with-contenv bash
+# with-contenv is required: s6-overlay runs /etc/cont-init.d scripts without the
+# container environment otherwise, so VNC_PASSWORD and friends arrive empty.
 set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-/opt/data}"

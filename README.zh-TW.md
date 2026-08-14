@@ -75,14 +75,45 @@ docker compose up -d --build
 | Gateway | http://localhost:8642 |
 | SearXNG | http://localhost:18080 |
 
+## `./data` 內的 Agent 設定
+
+setup 精靈會產生 `data/config.yaml`，但不會寫入本容器自有能力的相關設定。`./data` 是 git 忽略的，所以這些步驟不會隨著 clone 一起帶走 —— 在新環境部署時要重做一次。
+
+**1. 合併設定片段。** [`examples/config-additions.yaml`](examples/config-additions.yaml) 內含視覺模型、SearXNG 後端與桌面控制三個區塊。請**合併**進 `data/config.yaml`，不要覆蓋 —— 精靈產生的那份檔案裡有你的 API 金鑰。
+
+**2. 檢查 `agent.disabled_toolsets`。** 精靈可能會停用本容器依賴的工具集。`computer_use`、`vision`、`web`、`browser` 不能出現在該清單裡，否則功能會無聲失效 —— agent 會回你「沒有截圖工具」而不是報錯。
+
+**3. 複製 agent 常駐指示。** [`examples/SOUL.md`](examples/SOUL.md) → `data/SOUL.md`。Hermes 會把 `HERMES_HOME` 下的 `SOUL.md` 注入每一次的系統提示；內容告訴 agent 它有桌面可用，以及如何把檔案透過對話回傳（`MEDIA:/opt/data/shot.png`）。`.hermes.md` / `AGENTS.md` 是從**工作目錄**讀取的，在這個環境下位置不可靠。
+
+**4. 安裝 cua-driver**（只有要用桌面控制才需要）：
+
+```bash
+docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use install
+docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use doctor
+```
+
+它會裝在 `/opt/data/.local/bin`，因此會隨 `./data` 持久化，重建映像也不會消失。`doctor` 顯示 `ax_capability` 受阻是預期的：容器內沒有 AT-SPI，所以元素樹是空的，但螢幕擷取與輸入注入都正常。
+
+### 視覺模型
+
+任何 OpenAI 相容端點皆可，設定完全來自 `.env`：
+
+```bash
+AUXILIARY_VISION_BASE_URL=http://host.docker.internal:11434/v1
+AUXILIARY_VISION_MODEL=qwen3.5:9b
+AUXILIARY_VISION_API_KEY=ollama
+AUXILIARY_VISION_REASONING_EFFORT=none
+```
+
+`host.docker.internal` 可直達主機，所以本機的 Ollama 不需要任何 port mapping —— 但它必須監聽在 loopback 以外的介面（`OLLAMA_HOST=0.0.0.0`）。
+
+具備 thinking 能力的模型請設定 `AUXILIARY_VISION_REASONING_EFFORT=none`。否則它會把整個 token 預算花在 reasoning 欄位上而回傳空的 content，症狀是視覺分析靜靜地回傳空白。
+
+視覺模型會不會真的被使用，取決於主模型：當主模型的供應商原生支援在 tool result 裡夾帶圖片（Anthropic、OpenAI、OpenRouter、Gemini 3）時，Hermes 會把截圖直接交給主模型，這個端點就不會被呼叫。custom 與本地供應商則會走這條 auxiliary 路徑。
+
 ## 網頁搜尋後端
 
-`docker compose up` 會一併啟動 [SearXNG](https://docs.searxng.org/) 實例，並透過 `SEARXNG_URL=http://searxng:8080`（走 compose 網路解析）讓 Hermes 使用它。在 `data/config.yaml` 指定後端即可啟用：
-
-```yaml
-web:
-  search_backend: "searxng"
-```
+`docker compose up` 會一併啟動 [SearXNG](https://docs.searxng.org/) 實例，並透過 `SEARXNG_URL=http://searxng:8080`（走 compose 網路解析）讓 Hermes 使用它。在 `data/config.yaml` 設定 `web.search_backend: "searxng"` 即可啟用（見上方步驟 1）。
 
 注意事項：
 
@@ -145,6 +176,7 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 | `HERMES_SEARXNG_PORT` | SearXNG 對外 port（綁定 `127.0.0.1`） | `18080` |
 | `SEARXNG_SECRET` | SearXNG secret key，未設定則無法啟動 | 僅本機用的 fallback |
 | `SEARXNG_URL` | Hermes 尋找 SearXNG 的位址 | `http://searxng:8080` |
+| `AUXILIARY_VISION_*` | 視覺端點：`_BASE_URL`、`_MODEL`、`_API_KEY`、`_REASONING_EFFORT` | 空（自動選擇） |
 | `HERMES_DASHBOARD` | 啟用 Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard 基本認證 | — |
 | `VNC_PASSWORD` | VNC 密碼（僅在首次建立 passwd 檔時寫入；VNC 協定只取前 8 個字元） | — |
@@ -174,6 +206,9 @@ docker compose exec gateway /docker/gui/hermes-vnc-restart.sh
 ├── .env.example                # 環境變數範本
 ├── .gitattributes              # 強制 shell / s6 腳本使用 LF 換行
 ├── data/                       # 持久化資料（git 忽略，首次執行後產生）
+├── examples/
+│   ├── SOUL.md                 # Agent 常駐指示 → 複製到 data/SOUL.md
+│   └── config-additions.yaml   # 合併進 data/config.yaml 的設定片段
 ├── scripts/
 │   └── migrate-local-hermes.py # 本機 Hermes 設定遷移至 ./data
 └── docker/

@@ -75,14 +75,45 @@ docker compose up -d --build
 | Gateway | http://localhost:8642 |
 | SearXNG | http://localhost:18080 |
 
+## Agent configuration in `./data`
+
+The setup wizard writes `data/config.yaml`, but not the settings that wire up this container's own capabilities. `./data` is gitignored, so these steps are not captured by cloning the repo — redo them on a fresh deployment.
+
+**1. Merge the config additions.** [`examples/config-additions.yaml`](examples/config-additions.yaml) holds the vision model, SearXNG backend, and desktop-control blocks. Merge them into `data/config.yaml` rather than replacing it — the wizard's file holds your API keys.
+
+**2. Check `agent.disabled_toolsets`.** The wizard may disable toolsets this container depends on. `computer_use`, `vision`, `web`, and `browser` must not be listed, or the features fail quietly — the agent reports it has no screenshot tool instead of erroring.
+
+**3. Copy the agent instructions.** [`examples/SOUL.md`](examples/SOUL.md) → `data/SOUL.md`. Hermes injects `SOUL.md` from `HERMES_HOME` into every system prompt; it tells the agent it has a desktop, and how to hand a file back over chat (`MEDIA:/opt/data/shot.png`). The `.hermes.md` / `AGENTS.md` slots are read from the working directory instead, which is not a reliable location here.
+
+**4. Install cua-driver** (only if you want desktop control):
+
+```bash
+docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use install
+docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use doctor
+```
+
+It lands in `/opt/data/.local/bin`, so it persists in `./data` across image rebuilds. `doctor` reporting `ax_capability` blocked is expected: AT-SPI is unavailable in the container, so element trees are empty while screen capture and input injection work.
+
+### Vision model
+
+Any OpenAI-compatible endpoint, configured entirely from `.env`:
+
+```bash
+AUXILIARY_VISION_BASE_URL=http://host.docker.internal:11434/v1
+AUXILIARY_VISION_MODEL=qwen3.5:9b
+AUXILIARY_VISION_API_KEY=ollama
+AUXILIARY_VISION_REASONING_EFFORT=none
+```
+
+`host.docker.internal` reaches the host, so a local Ollama needs no port mapping — but it must listen on more than loopback (`OLLAMA_HOST=0.0.0.0`).
+
+Set `AUXILIARY_VISION_REASONING_EFFORT=none` for thinking-capable models. Otherwise they spend the entire token budget on the reasoning field and return empty content, which surfaces as vision analysis silently producing nothing.
+
+Whether the vision model is used at all depends on the main model: when the main provider natively accepts images in tool results (Anthropic, OpenAI, OpenRouter, Gemini 3), Hermes hands screenshots straight to it and this endpoint goes unused. Custom and local providers fall back to this auxiliary path.
+
 ## Web search backend
 
-`docker compose up` also starts a [SearXNG](https://docs.searxng.org/) instance and points Hermes at it through `SEARXNG_URL=http://searxng:8080`, resolved over the compose network. Tell Hermes to use it by setting the backend in `data/config.yaml`:
-
-```yaml
-web:
-  search_backend: "searxng"
-```
+`docker compose up` also starts a [SearXNG](https://docs.searxng.org/) instance and points Hermes at it through `SEARXNG_URL=http://searxng:8080`, resolved over the compose network. Enable it with `web.search_backend: "searxng"` in `data/config.yaml` (see step 1 above).
 
 Notes:
 
@@ -145,6 +176,7 @@ See [`.env.example`](.env.example) for a full template.
 | `HERMES_SEARXNG_PORT` | SearXNG host port (bound to `127.0.0.1`) | `18080` |
 | `SEARXNG_SECRET` | SearXNG secret key; it will not start without one | local-only fallback |
 | `SEARXNG_URL` | Where Hermes looks for SearXNG | `http://searxng:8080` |
+| `AUXILIARY_VISION_*` | Vision endpoint: `_BASE_URL`, `_MODEL`, `_API_KEY`, `_REASONING_EFFORT` | empty (auto) |
 | `HERMES_DASHBOARD` | Enable Dashboard | `1` |
 | `HERMES_DASHBOARD_BASIC_AUTH_*` | Dashboard basic auth | — |
 | `VNC_PASSWORD` | VNC password (written only on first passwd file creation; truncated to 8 characters by the VNC protocol) | — |
@@ -174,6 +206,9 @@ The container also sets `shm_size: 2g` for Chrome and GUI processes.
 ├── .env.example                # Environment variable template
 ├── .gitattributes              # Enforce LF line endings for shell / s6 scripts
 ├── data/                       # Persistent data (gitignored, created on first run)
+├── examples/
+│   ├── SOUL.md                 # Agent instructions → copy to data/SOUL.md
+│   └── config-additions.yaml   # Blocks to merge into data/config.yaml
 ├── scripts/
 │   └── migrate-local-hermes.py # Migrate local Hermes settings into ./data
 └── docker/

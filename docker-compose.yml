@@ -45,10 +45,20 @@ services:
       - HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:-}
       - HERMES_DASHBOARD_BASIC_AUTH_SECRET=${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}
       - DISPLAY=${VNC_DISPLAY:-:1}
+      # cua-driver needs the X11 auth cookie to reach the VNC display; without it
+      # screen capture and input injection fail with "Authorization required".
+      - XAUTHORITY=/opt/data/.Xauthority
       - AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/google-chrome
       # Read by Hermes' bundled searxng web-search provider. Resolves over the
       # compose network, so it does not depend on the published port.
       - SEARXNG_URL=${SEARXNG_URL:-http://searxng:8080}
+      # Vision model for images and computer_use screenshots. Any OpenAI-compatible
+      # endpoint — swap providers by editing .env alone. Empty values fall back to
+      # Hermes' own provider auto-selection.
+      - AUXILIARY_VISION_BASE_URL=${AUXILIARY_VISION_BASE_URL:-}
+      - AUXILIARY_VISION_MODEL=${AUXILIARY_VISION_MODEL:-}
+      - AUXILIARY_VISION_API_KEY=${AUXILIARY_VISION_API_KEY:-}
+      - AUXILIARY_VISION_REASONING_EFFORT=${AUXILIARY_VISION_REASONING_EFFORT:-}
       - VNC_PASSWORD=${VNC_PASSWORD:-}
       - VNC_DISPLAY=${VNC_DISPLAY:-:1}
       - VNC_PORT=${VNC_PORT:-5901}

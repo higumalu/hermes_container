@@ -1,0 +1,52 @@
+# Additions for data/config.yaml — the setup wizard does not write these.
+# Merge them into the file it generated; do not replace it (it holds your API
+# keys and model settings).
+#
+# Values come from .env through ${VAR} expansion, which Hermes applies to every
+# string in the config at load time. Switching provider means editing .env only.
+# An unset variable resolves to an empty string, which Hermes reads as "not
+# configured" and falls back to its own auto-selection.
+
+# ---------------------------------------------------------------------------
+# Vision model — used for image files and for computer_use screenshots
+# ---------------------------------------------------------------------------
+auxiliary:
+  vision:
+    base_url: ${AUXILIARY_VISION_BASE_URL}
+    model: ${AUXILIARY_VISION_MODEL}
+    api_key: ${AUXILIARY_VISION_API_KEY}
+    # Thinking models spend the whole token budget on the reasoning field and
+    # return empty content. "none" disables it; empty keeps provider default.
+    reasoning_effort: ${AUXILIARY_VISION_REASONING_EFFORT}
+    timeout: 120
+
+# ---------------------------------------------------------------------------
+# Web search through the bundled SearXNG service
+# ---------------------------------------------------------------------------
+web:
+  search_backend: "searxng"
+
+# ---------------------------------------------------------------------------
+# Desktop control (cua-driver)
+# ---------------------------------------------------------------------------
+computer_use:
+  # AT-SPI is not available in this container, so SOM overlays would have no
+  # element bounds to mark. Vision mode works from pixels and coordinates.
+  capture_after_mode: vision
+  max_image_dimension: 1456
+  cua_telemetry: false
+
+# ---------------------------------------------------------------------------
+# Toolsets
+# ---------------------------------------------------------------------------
+# The setup wizard may fill agent.disabled_toolsets with a long list. These four
+# must NOT be in it, or the features above are silently unavailable — the agent
+# will tell you it has no screenshot tool rather than failing loudly:
+#
+#   computer_use  — the computer_use tool (screenshot, click, type)
+#   vision        — vision_analyze
+#   web           — web_search / web_extract, i.e. SearXNG
+#   browser       — CDP browser control (browser_navigate and friends)
+#
+# agent:
+#   disabled_toolsets: [...]   # remove the four names above
