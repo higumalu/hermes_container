@@ -85,7 +85,7 @@ The setup wizard writes `data/config.yaml`, but not the settings that wire up th
 
 **3. Copy the agent instructions.** [`examples/SOUL.md`](examples/SOUL.md) → `data/SOUL.md`. Hermes injects `SOUL.md` from `HERMES_HOME` into every system prompt; it tells the agent it has a desktop, and how to hand a file back over chat (`MEDIA:/opt/data/shot.png`). The `.hermes.md` / `AGENTS.md` slots are read from the working directory instead, which is not a reliable location here.
 
-**4. Install cua-driver** (only if you want desktop control):
+**4. Install cua-driver** (optional — `hermes-desktop` below covers most desktop control):
 
 ```bash
 docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use install
@@ -110,6 +110,37 @@ AUXILIARY_VISION_REASONING_EFFORT=none
 Set `AUXILIARY_VISION_REASONING_EFFORT=none` for thinking-capable models. Otherwise they spend the entire token budget on the reasoning field and return empty content, which surfaces as vision analysis silently producing nothing.
 
 Whether the vision model is used at all depends on the main model: when the main provider natively accepts images in tool results (Anthropic, OpenAI, OpenRouter, Gemini 3), Hermes hands screenshots straight to it and this endpoint goes unused. Custom and local providers fall back to this auxiliary path.
+
+### Desktop control without pixels
+
+`hermes-desktop` reads the widget tree over AT-SPI and addresses elements by ref
+with screen-absolute bounds — `browser_snapshot` for everything outside the
+browser. It exists because the vision model cannot supply usable coordinates: it
+reports them in its own internally-resized image space, which measured 231–475 px
+of error on a 1440x900 screen, while AT-SPI hits a 39x25 menu item exactly.
+
+```bash
+docker compose exec -u hermes gateway hermes-desktop snapshot
+docker compose exec -u hermes gateway hermes-desktop click d3
+```
+
+```
+# xfce4-panel
+  - toggle button "Applications" [ref=d3] (0,0 102x26)
+```
+
+Requirements are wired into the image and the desktop session: `at-spi2-core`
+and `python3-pyatspi` are installed, `xstartup` publishes the session bus at
+`/run/user/$HERMES_UID/bus` and starts the AT-SPI bus launcher, and compose
+passes `DBUS_SESSION_BUS_ADDRESS` so the agent finds it. Applications join the
+bus automatically, including ones the agent launches itself.
+
+Run it as the `hermes` user. D-Bus peer connections belong to that user, so root
+sees every application as `role=invalid`. The agent already runs as `hermes`.
+
+Note that `cont-init` only installs `xstartup.default` when `data/.vnc/xstartup`
+does not exist. An existing session file is never overwritten, so after pulling
+changes to it, move the old one aside and restart the container.
 
 ## Web search backend
 

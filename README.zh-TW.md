@@ -85,7 +85,7 @@ setup 精靈會產生 `data/config.yaml`，但不會寫入本容器自有能力�
 
 **3. 複製 agent 常駐指示。** [`examples/SOUL.md`](examples/SOUL.md) → `data/SOUL.md`。Hermes 會把 `HERMES_HOME` 下的 `SOUL.md` 注入每一次的系統提示；內容告訴 agent 它有桌面可用，以及如何把檔案透過對話回傳（`MEDIA:/opt/data/shot.png`）。`.hermes.md` / `AGENTS.md` 是從**工作目錄**讀取的，在這個環境下位置不可靠。
 
-**4. 安裝 cua-driver**（只有要用桌面控制才需要）：
+**4. 安裝 cua-driver**（選用 —— 下方的 `hermes-desktop` 已涵蓋多數桌面控制需求）：
 
 ```bash
 docker compose exec gateway /opt/hermes/.venv/bin/hermes computer-use install
@@ -110,6 +110,26 @@ AUXILIARY_VISION_REASONING_EFFORT=none
 具備 thinking 能力的模型請設定 `AUXILIARY_VISION_REASONING_EFFORT=none`。否則它會把整個 token 預算花在 reasoning 欄位上而回傳空的 content，症狀是視覺分析靜靜地回傳空白。
 
 視覺模型會不會真的被使用，取決於主模型：當主模型的供應商原生支援在 tool result 裡夾帶圖片（Anthropic、OpenAI、OpenRouter、Gemini 3）時，Hermes 會把截圖直接交給主模型，這個端點就不會被呼叫。custom 與本地供應商則會走這條 auxiliary 路徑。
+
+### 不靠像素的桌面控制
+
+`hermes-desktop` 透過 AT-SPI 讀取真實的 widget 樹，用 ref 定位元素並提供螢幕絕對座標 —— 相當於瀏覽器之外的 `browser_snapshot`。它存在的理由是視覺模型無法提供可用的座標：模型在自己內部縮放後的空間裡回報位置，在 1440x900 的畫面上實測誤差 231–475 px，而 AT-SPI 能精準命中 39x25 的選單項目。
+
+```bash
+docker compose exec -u hermes gateway hermes-desktop snapshot
+docker compose exec -u hermes gateway hermes-desktop click d3
+```
+
+```
+# xfce4-panel
+  - toggle button "Applications" [ref=d3] (0,0 102x26)
+```
+
+相依項目已接進映像與桌面 session：映像安裝了 `at-spi2-core` 與 `python3-pyatspi`，`xstartup` 把 session bus 發佈在 `/run/user/$HERMES_UID/bus` 並啟動 AT-SPI bus launcher，compose 則傳入 `DBUS_SESSION_BUS_ADDRESS` 讓 agent 找得到。應用程式會自動加入該 bus，包含 agent 自己啟動的。
+
+請以 `hermes` 身分執行。D-Bus 的 peer 連線屬於該使用者，root 會看到所有應用都是 `role=invalid`。agent 本身就是以 `hermes` 執行。
+
+注意 `cont-init` 只在 `data/.vnc/xstartup` 不存在時才安裝 `xstartup.default`，既有的 session 檔案不會被覆寫 —— 所以更新該檔後，需要先把舊的移開再重啟容器。
 
 ## 網頁搜尋後端
 

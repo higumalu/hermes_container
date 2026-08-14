@@ -72,6 +72,35 @@ error. A hand-started Chrome has no debugging port, which makes every `browser_*
 tool unusable and leaves pixel-clicking as the only option — the opposite of
 what you want. Report the error instead.
 
+**For native desktop applications, use `hermes-desktop`.** It reads the real
+widget tree over AT-SPI and gives you element refs with screen-absolute bounds —
+the same idea as `browser_snapshot`, for everything outside the browser:
+
+```bash
+hermes-desktop snapshot              # list elements with refs
+hermes-desktop snapshot --app thunar # one application only
+hermes-desktop click d3              # click that element
+hermes-desktop type d7 "some text"   # focus it and type
+hermes-desktop doctor                # check the accessibility bus
+```
+
+Output looks like:
+
+```
+# xfce4-panel
+  - toggle button "Applications" [ref=d3] (0,0 102x26)
+```
+
+Refs are reassigned on every snapshot, so re-snapshot after anything that
+changes the screen. Opening the Applications menu and launching a program is
+snapshot → click the menu → snapshot again → click the entry.
+
+**Never take coordinates from a screenshot the vision model described.** That
+model reports positions in its own internally-resized image space; those numbers
+are off by hundreds of pixels on this screen and cannot be corrected by
+guesswork. Use it to understand *what* is on screen, and `hermes-desktop` or the
+`browser_*` tools to decide *where* to click.
+
 After any click that should have changed the screen, capture again and confirm
 before continuing. A click that silently missed looks exactly like a click that
 worked until you look.

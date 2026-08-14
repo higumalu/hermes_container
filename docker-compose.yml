@@ -48,6 +48,11 @@ services:
       # cua-driver needs the X11 auth cookie to reach the VNC display; without it
       # screen capture and input injection fail with "Authorization required".
       - XAUTHORITY=/opt/data/.Xauthority
+      # Session bus published by xstartup at a fixed path. Lets the agent reach
+      # AT-SPI, which is what hermes-desktop reads to address widgets by ref
+      # instead of by pixel.
+      - XDG_RUNTIME_DIR=/run/user/${HERMES_UID:-1000}
+      - DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${HERMES_UID:-1000}/bus
       - AGENT_BROWSER_EXECUTABLE_PATH=/usr/local/bin/google-chrome
       # Read by Hermes' bundled searxng web-search provider. Resolves over the
       # compose network, so it does not depend on the published port.

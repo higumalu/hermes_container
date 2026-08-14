@@ -1,0 +1,259 @@
+#!/usr/bin/python3
+"""Element-level desktop inspection and control over AT-SPI.
+
+The vision model cannot be trusted with coordinates: it reports them in its own
+internally-resized space, which lands clicks hundreds of pixels off. AT-SPI
+exposes the real widget tree with screen-absolute bounds, so this is to native
+desktop apps what browser_snapshot / browser_click are to web pages — address
+elements by ref, never by pixel.
+
+Runs on the system Python: pyatspi lives in /usr/lib/python3/dist-packages and
+is not visible to the Hermes venv.
+
+    hermes-desktop snapshot [--app NAME] [--all]
+    hermes-desktop click REF [--button 1|2|3] [--double]
+    hermes-desktop type REF TEXT
+    hermes-desktop focus REF
+
+Refs (d1, d2, …) are assigned per snapshot and stored alongside it. They go
+stale as soon as the screen changes — re-snapshot after anything that redraws.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+try:
+    import pyatspi
+except ImportError:
+    sys.exit(
+        "pyatspi is unavailable. This must run on /usr/bin/python3 (the Hermes "
+        "venv does not see /usr/lib/python3/dist-packages)."
+    )
+
+REF_FILE = Path(os.environ.get("HERMES_HOME", "/opt/data")) / ".cache" / "desktop-refs.json"
+
+# Roles worth showing an agent: things it can click, read, or type into.
+ACTIONABLE = {
+    "push button", "toggle button", "check box", "radio button", "link",
+    "menu", "menu item", "check menu item", "radio menu item",
+    "text", "entry", "password text", "combo box", "list item", "table cell",
+    "page tab", "slider", "spin button", "tree item",
+}
+# Shown for orientation even though they are not directly actionable.
+CONTEXT = {"frame", "dialog", "window", "alert", "label", "heading"}
+
+MAX_DEPTH = 12
+MAX_ELEMENTS = 400
+
+
+def _visible(node) -> bool:
+    try:
+        st = node.getState()
+        return st.contains(pyatspi.STATE_SHOWING) and st.contains(pyatspi.STATE_VISIBLE)
+    except Exception:
+        return False
+
+
+def _bounds(node):
+    try:
+        e = node.queryComponent().getExtents(pyatspi.DESKTOP_COORDS)
+    except Exception:
+        return None
+    # Off-screen widgets report INT_MIN or zero area; both are unusable targets.
+    if e.width <= 0 or e.height <= 0 or e.x < -10000 or e.y < -10000:
+        return None
+    return (e.x, e.y, e.width, e.height)
+
+
+def _label(node) -> str:
+    name = (node.name or "").strip()
+    if name:
+        return name
+    try:
+        text = node.queryText()
+        return text.getText(0, min(60, text.characterCount)).strip()
+    except Exception:
+        return ""
+
+
+def collect(app_filter=None, show_all=False):
+    """Walk the desktop and return a flat list of visible elements."""
+    out = []
+    try:
+        desktop = pyatspi.Registry.getDesktop(0)
+    except Exception as exc:
+        sys.exit(f"cannot reach the accessibility bus: {exc}")
+
+    def walk(node, depth, app_name):
+        if node is None or depth > MAX_DEPTH or len(out) >= MAX_ELEMENTS:
+            return
+        try:
+            role = node.getRoleName()
+        except Exception:
+            return
+        # The application node carries no SHOWING/VISIBLE state — gating on it
+        # would prune the whole tree before reaching any window.
+        if role != "application" and not _visible(node):
+            return
+        keep = role != "application" and (show_all or role in ACTIONABLE or role in CONTEXT)
+        if keep:
+            box = _bounds(node)
+            if box:
+                actions = []
+                try:
+                    act = node.queryAction()
+                    actions = [act.getName(i) for i in range(act.nActions)]
+                except Exception:
+                    pass
+                out.append({
+                    "role": role, "name": _label(node), "bounds": box,
+                    "app": app_name, "depth": depth, "actions": actions,
+                })
+        for child in node:
+            walk(child, depth + 1, app_name)
+
+    for app in desktop:
+        if app is None:
+            continue
+        name = app.name or "?"
+        if app_filter and app_filter.lower() not in name.lower():
+            continue
+        walk(app, 0, name)
+    return out
+
+
+def cmd_snapshot(args):
+    elements = collect(args.app, args.all)
+    if not elements:
+        print("No accessible elements found.")
+        print("Either no application on this desktop exposes an accessibility tree,")
+        print("or the AT-SPI bus is not running. Check: hermes-desktop doctor")
+        return 1
+
+    refs = {}
+    lines, current_app = [], None
+    for i, el in enumerate(elements, start=1):
+        ref = f"d{i}"
+        refs[ref] = el
+        if el["app"] != current_app:
+            current_app = el["app"]
+            lines.append(f"\n# {current_app}")
+        x, y, w, h = el["bounds"]
+        indent = "  " * min(el["depth"], 6)
+        name = f' "{el["name"]}"' if el["name"] else ""
+        lines.append(f'{indent}- {el["role"]}{name} [ref={ref}] ({x},{y} {w}x{h})')
+
+    REF_FILE.parent.mkdir(parents=True, exist_ok=True)
+    REF_FILE.write_text(json.dumps(refs), encoding="utf-8")
+    print("\n".join(lines).strip())
+    print(f"\n{len(elements)} elements. Refs valid until the screen changes.")
+    return 0
+
+
+def _resolve(ref):
+    if not REF_FILE.exists():
+        sys.exit("no snapshot yet — run: hermes-desktop snapshot")
+    refs = json.loads(REF_FILE.read_text(encoding="utf-8"))
+    if ref not in refs:
+        sys.exit(f"unknown ref {ref!r}. Re-run snapshot; refs change every time.")
+    return refs[ref]
+
+
+def _center(el):
+    x, y, w, h = el["bounds"]
+    return x + w // 2, y + h // 2
+
+
+def cmd_click(args):
+    el = _resolve(args.ref)
+    cx, cy = _center(el)
+    cmd = ["xdotool", "mousemove", str(cx), str(cy), "click"]
+    if args.double:
+        cmd += ["--repeat", "2"]
+    cmd.append(str(args.button))
+    subprocess.run(cmd, check=True)
+    time.sleep(0.3)
+    print(f'clicked {el["role"]} "{el["name"]}" at ({cx},{cy})')
+    return 0
+
+
+def cmd_focus(args):
+    el = _resolve(args.ref)
+    cx, cy = _center(el)
+    subprocess.run(["xdotool", "mousemove", str(cx), str(cy), "click", "1"], check=True)
+    time.sleep(0.3)
+    print(f'focused {el["role"]} "{el["name"]}"')
+    return 0
+
+
+def cmd_type(args):
+    el = _resolve(args.ref)
+    cx, cy = _center(el)
+    subprocess.run(["xdotool", "mousemove", str(cx), str(cy), "click", "1"], check=True)
+    time.sleep(0.3)
+    subprocess.run(["xdotool", "type", "--delay", "12", args.text], check=True)
+    print(f'typed into {el["role"]} "{el["name"]}"')
+    return 0
+
+
+def cmd_doctor(args):
+    print(f"DISPLAY                  = {os.environ.get('DISPLAY', '(unset)')}")
+    print(f"XAUTHORITY               = {os.environ.get('XAUTHORITY', '(unset)')}")
+    print(f"DBUS_SESSION_BUS_ADDRESS = {os.environ.get('DBUS_SESSION_BUS_ADDRESS', '(unset)')}")
+    try:
+        desktop = pyatspi.Registry.getDesktop(0)
+        n = desktop.childCount
+        print(f"accessibility bus        = reachable, {n} application(s) registered")
+        for app in desktop:
+            if app is not None:
+                print(f"  - {app.name}")
+        if n == 0:
+            print("\nNo applications registered. GTK apps only join the bus when they")
+            print("start with the bridge enabled — launch them from the desktop session.")
+    except Exception as exc:
+        print(f"accessibility bus        = UNREACHABLE ({exc})")
+        return 1
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(prog="hermes-desktop", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("snapshot", help="list visible elements with refs")
+    s.add_argument("--app", help="only this application (substring match)")
+    s.add_argument("--all", action="store_true", help="include non-actionable roles")
+    s.set_defaults(func=cmd_snapshot)
+
+    c = sub.add_parser("click", help="click the element with this ref")
+    c.add_argument("ref")
+    c.add_argument("--button", type=int, default=1, choices=[1, 2, 3])
+    c.add_argument("--double", action="store_true")
+    c.set_defaults(func=cmd_click)
+
+    f = sub.add_parser("focus", help="click an element to give it focus")
+    f.add_argument("ref")
+    f.set_defaults(func=cmd_focus)
+
+    t = sub.add_parser("type", help="focus an element and type into it")
+    t.add_argument("ref")
+    t.add_argument("text")
+    t.set_defaults(func=cmd_type)
+
+    d = sub.add_parser("doctor", help="report accessibility bus status")
+    d.set_defaults(func=cmd_doctor)
+
+    args = p.parse_args()
+    sys.exit(args.func(args))
+
+
+if __name__ == "__main__":
+    main()

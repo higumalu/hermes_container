@@ -10,6 +10,16 @@ TIGERVNC_DIR="${HERMES_HOME}/.config/tigervnc"
 mkdir -p "${VNC_DIR}" "${TIGERVNC_DIR}"
 chmod 700 "${VNC_DIR}" "${HERMES_HOME}/.config" "${TIGERVNC_DIR}"
 
+# XDG runtime dir for the session D-Bus. xstartup puts the bus at a fixed path
+# here so the agent process can find it; without it AT-SPI is unreachable and
+# hermes-desktop has no widget tree to read.
+if id hermes >/dev/null 2>&1; then
+  RUNTIME_DIR="/run/user/$(id -u hermes)"
+  mkdir -p "${RUNTIME_DIR}"
+  chown hermes:hermes "${RUNTIME_DIR}"
+  chmod 700 "${RUNTIME_DIR}"
+fi
+
 if [ ! -f "${VNC_DIR}/xstartup" ]; then
   cp /docker/gui/xstartup.default "${VNC_DIR}/xstartup"
   chmod +x "${VNC_DIR}/xstartup"

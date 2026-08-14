@@ -37,6 +37,9 @@ RUN apt-get update \
         ibus-gtk3 \
         fonts-noto-cjk \
         fonts-noto-color-emoji \
+        at-spi2-core \
+        python3-pyatspi \
+        x11-utils \
         gnupg \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/*
@@ -76,7 +79,9 @@ RUN find /docker/gui -type f \( -name '*.sh' -o -name 'run' -o -name 'type' -o -
         -exec sed -i 's/\r$//' {} + \
     && chmod +x /docker/gui/cont-init-vnc.sh \
              /docker/gui/hermes-vnc-restart.sh \
+             /docker/gui/hermes-desktop \
              /docker/gui/s6-gui-stack/run \
+    && ln -sf /docker/gui/hermes-desktop /usr/local/bin/hermes-desktop \
     && cp /docker/gui/cont-init-vnc.sh /etc/cont-init.d/99-prepare-vnc \
     && mkdir -p /etc/s6-overlay/s6-rc.d/gui-stack \
     && cp /docker/gui/s6-gui-stack/type /etc/s6-overlay/s6-rc.d/gui-stack/type \

@@ -1,14 +1,38 @@
 #!/bin/sh
-# TigerVNC session — XFCE + IBus Chewing (注音) + session D-Bus
+# TigerVNC session — XFCE + IBus Chewing (注音) + session D-Bus + AT-SPI
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 
-if command -v dbus-launch >/dev/null 2>&1; then
+# Session bus on a fixed path. dbus-launch would pick a random socket under
+# /tmp that only this session knows about, leaving the agent process with no way
+# to find it — and with it, no way to reach AT-SPI.
+XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+if [ -d "${XDG_RUNTIME_DIR}" ] && command -v dbus-daemon >/dev/null 2>&1; then
+  if [ ! -S "${XDG_RUNTIME_DIR}/bus" ]; then
+    dbus-daemon --session --address="unix:path=${XDG_RUNTIME_DIR}/bus" \
+                --nofork --nopidfile &
+    sleep 1
+  fi
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+elif command -v dbus-launch >/dev/null 2>&1; then
+  # Fallback: keeps the desktop working, but the agent will not find this bus.
   eval "$(dbus-launch --sh-syntax)"
 fi
 
 export XDG_SESSION_TYPE=x11
 export XDG_CURRENT_DESKTOP=XFCE
+
+# Accessibility bridge. Toolkits only publish their widget tree when this is on,
+# and it must be exported before the apps start. hermes-desktop reads that tree.
+export GTK_MODULES=gail:atk-bridge
+export NO_AT_BRIDGE=0
+export QT_ACCESSIBILITY=1
+export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
+if [ -x /usr/libexec/at-spi-bus-launcher ]; then
+  /usr/libexec/at-spi-bus-launcher --launch-immediately &
+  sleep 1
+fi
 
 # IBus Chewing (注音輸入法)
 export GTK_IM_MODULE=ibus
